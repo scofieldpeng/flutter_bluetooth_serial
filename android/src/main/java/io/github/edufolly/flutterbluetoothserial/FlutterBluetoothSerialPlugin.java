@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat;
 import android.util.Log;
 import android.util.SparseArray;
 import android.os.AsyncTask;
+import android.os.Bundle;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -323,9 +324,38 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     switch (action) {
                         case BluetoothDevice.ACTION_FOUND:
                             final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                            Log.d(TAG, "Discovered " + device.getAddress() + " (" + device.getName() + ")");
+
                             //final BluetoothClass deviceClass = intent.getParcelableExtra(BluetoothDevice.EXTRA_CLASS); // @TODO . !BluetoothClass!
                             //final String extraName = intent.getStringExtra(BluetoothDevice.EXTRA_NAME); // @TODO ? !EXTRA_NAME!
-                            final int deviceRSSI = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
+                            
+                            int deviceRSSI = Short.MIN_VALUE;
+                            // RSSI should be short...
+                            try {
+                                deviceRSSI = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
+                                Log.d(TAG, "Extra RSSI field is short!");
+                            }
+                            catch (Exception e1) {
+                                // Sometimes seems to be integer...
+                                try {
+                                    deviceRSSI = intent.getIntExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
+                                    Log.d(TAG, "Extra RSSI field is integer!");
+                                }
+                                catch (Exception e2) {
+                                    // Debugging info to track other types/values of `BluetoothDevice.EXTRA_RSSI` extra
+                                    try {
+                                        Bundle bundle = intent.getExtras();
+                                        Object value = bundle.get(BluetoothDevice.EXTRA_RSSI);
+                                        java.lang.Class type = value.getClass();
+                                        Log.d(TAG, "Debug EXTRA_RSSI type: " + type.getName());
+                                        Log.d(TAG, "Debug EXTRA_RSSI value: " + value.toString());
+                                    }
+                                    catch (Exception ex) {
+                                        Log.e(TAG, "RSSI resolution failed" + ex.getMessage());
+                                        ex.printStackTrace();
+                                    }
+                                }
+                            }
 
                             Map<String, Object> discoveryResult = new HashMap<>();
                             discoveryResult.put("address", device.getAddress());
@@ -334,9 +364,15 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             //discoveryResult.put("class", deviceClass); // @TODO . it isn't my priority for now !BluetoothClass!
                             discoveryResult.put("isConnected", checkIsDeviceConnected(device));
                             discoveryResult.put("bondState", device.getBondState());
-                            discoveryResult.put("rssi", deviceRSSI);
 
-                            Log.d(TAG, "Discovered " + device.getAddress());
+                            if (deviceRSSI != Short.MIN_VALUE) {
+                                Log.d(TAG, "Valid RSSI of value " + deviceRSSI + ", passing to common code");
+                                discoveryResult.put("rssi", deviceRSSI);
+                            }
+                            else {
+                                Log.d(TAG, "Invalid RSSI, not passing to common code");
+                            }
+
                             if (discoverySink != null) {
                                 discoverySink.success(discoveryResult);
                             }
