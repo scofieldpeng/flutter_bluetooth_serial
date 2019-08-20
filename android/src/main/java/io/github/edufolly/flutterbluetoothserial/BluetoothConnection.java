@@ -9,6 +9,7 @@ import java.util.Arrays;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.os.Build;
 
 /// Universal Bluetooth serial connection class (for Java)
 public abstract class BluetoothConnection
@@ -46,7 +47,7 @@ public abstract class BluetoothConnection
             throw new IOException("device not found");
         }
 
-        BluetoothSocket socket = device.createRfcommSocketToServiceRecord(uuid); // @TODO . introduce ConnectionMethod
+        BluetoothSocket socket = device.createInsecureRfcommSocketToServiceRecord(uuid);
         if (socket == null) {
             throw new IOException("socket connection not established");
         }
