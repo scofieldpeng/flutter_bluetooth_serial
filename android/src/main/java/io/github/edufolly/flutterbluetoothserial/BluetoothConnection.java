@@ -21,7 +21,7 @@ public abstract class BluetoothConnection
     protected ConnectionThread connectionThread = null;
 
     public boolean isConnected() {
-        return connectionThread != null;
+        return connectionThread != null && connectionThread.requestedClosing != true;
     }
 
 
@@ -67,7 +67,7 @@ public abstract class BluetoothConnection
     
     /// Disconnects current session (ignore if not connected)
     public void disconnect() {
-        if (connectionThread != null) {
+        if (isConnected()) {
             connectionThread.cancel();
             connectionThread = null;
         }
@@ -148,7 +148,6 @@ public abstract class BluetoothConnection
 
             // Just prevent unnecessary `cancel`ing
             requestedClosing = true;
-            connectionThread = null;
         }
 
         /// Writes to output stream

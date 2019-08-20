@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
@@ -22,8 +23,7 @@ class _Message {
 class _ChatPage extends State<ChatPage> {
   static final clientID = 0;
   static final maxMessageLength = 4096 - 3;
-
-  StreamSubscription<Uint8List> _streamSubscription;
+  BluetoothConnection connection;
 
   List<_Message> messages = List<_Message>();
   String _messageBuffer = '';
@@ -32,25 +32,42 @@ class _ChatPage extends State<ChatPage> {
   final ScrollController listScrollController = new ScrollController();
 
   bool isConnecting = true;
-  bool get isConnected => _streamSubscription != null;
+  bool get isConnected => connection != null && connection.isConnected;
+
+  bool isDisconnecting = false;
 
   @override
   void initState() {
     super.initState();
 
-    FlutterBluetoothSerial.instance.connect(widget.server).then((_) { // @TODO ? shouldn't be done via `.listen()`?
-      isConnecting = false;
-
-      // Subscribe for incoming data after connecting
-      _streamSubscription = FlutterBluetoothSerial.instance.onRead().listen(_onDataReceived);
-      setState(() {/* Update for `isConnecting`, since depends on `_streamSubscription` */});
-
-      // Subscribe for remote disconnection
-      _streamSubscription.onDone(() {
-        print('we got disconnected by remote!');
-        _streamSubscription = null;
-        setState(() {/* Update for `isConnected`, since is depends on `_streamSubscription` */});
+    BluetoothConnection.toAddress(widget.server.address).then((_connection) {
+      print('Connected to the device');
+      connection = _connection;
+      setState(() {
+        isConnecting = false;
+        isDisconnecting = false;
       });
+
+      connection.input.listen(_onDataReceived).onDone(() {
+        // Example: Detect which side closed the connection
+        // There should be `isDisconnecting` flag to show are we are (locally)
+        // in middle of disconnecting process, should be set before calling
+        // `dispose`, `finish` or `close`, which all causes to disconnect.
+        // If we except the disconnection, `onDone` should be fired as result.
+        // If we didn't except this (no flag set), it means closing by remote.
+        if (isDisconnecting) {
+          print('Disconnecting locally!');
+        }
+        else {
+          print('Disconnected remotely!');
+        }
+        if (this.mounted) {
+          setState(() {});
+        }
+      });
+    }).catchError((error) {
+      print('Cannot connect, exception occured');
+      print(error);
     });
   }
 
@@ -58,8 +75,9 @@ class _ChatPage extends State<ChatPage> {
   void dispose() {
     // Avoid memory leak (`setState` after dispose) and disconnect
     if (isConnected) {
-      _streamSubscription.cancel();
-      print('we are disconnecting locally!');
+      isDisconnecting = true;
+      connection.dispose();
+      connection = null;
     }
 
     super.dispose();
@@ -188,20 +206,27 @@ class _ChatPage extends State<ChatPage> {
     }
   }
 
-  void _sendMessage(String text) {
+  void _sendMessage(String text) async {
     text = text.trim();
+    textEditingController.clear();
+
     if (text.length > 0)  {
-      textEditingController.clear();
+      try {
+        connection.output.add(utf8.encode(text + "\r\n"));
+        await connection.output.allSent;
 
-      FlutterBluetoothSerial.instance.write(text + "\r\n");
+        setState(() {
+          messages.add(_Message(clientID, text));
+        });
 
-      setState(() {
-        messages.add(_Message(clientID, text));
-      });
-
-      Future.delayed(Duration(milliseconds: 333)).then((_) {
-        listScrollController.animateTo(listScrollController.position.maxScrollExtent, duration: Duration(milliseconds: 333), curve: Curves.easeOut);
-      });
+        Future.delayed(Duration(milliseconds: 333)).then((_) {
+          listScrollController.animateTo(listScrollController.position.maxScrollExtent, duration: Duration(milliseconds: 333), curve: Curves.easeOut);
+        });
+      }
+      catch (e) {
+        // Ignore error, but notify state
+        setState(() {});
+      }
     }
   }
 }

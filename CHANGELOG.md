@@ -1,3 +1,42 @@
+## [0.2.2] - 2019-08-19
+
+Patch release.
+
+* Fix closing connections which are not `listen`ing to `input` (solved #60),
+* Add more clear example of detecting which side caused disconnection,
+* Add exception on `add`ing to `output` if connection closed,
+* `BluetoothConnection` `cancel` is deprecated now, use `close` instead. It was stupid to name `cancel` something that `close`s (it was even documented that way, lol).
+
+## [0.2.1] - 2019-08-05
+
+Patch release.
+
+* apply patch #48 for some disconnection issues,
+* update `ChatPage` to newer API,
+* fix and update AndroidX declaration.
+
+## [0.2.0] - 2019-07-02
+
+Two big features packs: 
+* Bonding (Pairing):
+    - starting outgoing pairing requests,
+    - handling incoming pairing requests,
+    - remove current bondings to devices,
+* Discoverability!
+    - requesting discoverable mode for specified duration,
+    - example with timeout countdown,
+    - checking discoverable mode.
+
+And few more features:
+* get/set for local (discoverable) device name,
+* getting local adapter address (with some hacks to work on newer Androids),
+* checking for `isConnected` for discovered or bonded devices,
+* fixed few broadcast receiver leaks.
+
+## [0.1.1] - 2019-07-01
+
+* Patch #43 for "Error when meet unknown devices".
+
 ## [0.1.0] - 2019-06-19 
 
 Pull request #35 by @PsychoXIVI changes a lot:

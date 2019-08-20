@@ -1,14 +1,27 @@
 part of flutter_bluetooth_serial;
 
-/// Represents Bluetooth connection to remote device.
+/// Represents ongoing Bluetooth connection to remote device.
 class BluetoothConnection {
+  // Note by PsychoX at 2019-08-19 while working on issue #60:
+  // Fixed and then tested whole thing multiple times:
+  // - [X] basic `connect`, use `output`/`input` and `disconnect` by local scenario,
+  // - [X] fail on connecting to device that isn't listening,
+  // - [X] working `output` if no `listen`ing to `input`,
+  // - [X] closing by local if no `input` written,
+  // - [X] closing by local if no `listen`ing to `input` (this was the #60),
+  // - [X] closing by remote if no `input` written,
+  // - [X] closing by remote if no `listen`ing to `input`,
+  //    It works, but library user is notifed either by error on `output.add` or
+  //    by observing `connection.isConnected`. In "normal" conditions user can
+  //    listen to `input` even just for the `onDone` to proper detect closing.
+  // 
+
   /// This ID identifies real full `BluetoothConenction` object on platform side code.
   final int _id;
-  
+
   final EventChannel _readChannel;
   StreamSubscription<Uint8List> _readStreamSubscription;
   StreamController<Uint8List> _readStreamController;
-  bool isClosingByRemote;
 
   /// Stream sink used to read from the remote Bluetooth device
   /// 
@@ -16,14 +29,14 @@ class BluetoothConnection {
   /// 
   /// You should use some encoding to receive string in your `.listen` callback, for example `ascii.decode(data)` or `utf8.encode(data)`. 
   Stream<Uint8List> input;
-  
+
   /// Stream sink used to write to the remote Bluetooth device
   /// 
   /// You should use some encoding to send string, for example `.add(ascii.encode('Hello!'))` or `.add(utf8.encode('Cześć!))`. 
   _BluetoothStreamSink<Uint8List> output;
 
   /// Describes is stream connected.
-  get isConnected => output.isConnected;
+  bool get isConnected => output.isConnected;
 
 
 
@@ -32,21 +45,19 @@ class BluetoothConnection {
     this._id = id,
     this._readChannel = EventChannel('${FlutterBluetoothSerial.namespace}/read/$id')
   {
-    _readStreamController = StreamController<Uint8List>(onCancel: () {
-      cancel();
-    });
+    _readStreamController = StreamController<Uint8List>();
 
     _readStreamSubscription = _readChannel.receiveBroadcastStream().cast<Uint8List>().listen(
       _readStreamController.add,
       onError: _readStreamController.addError,
-      onDone: _readStreamController.close,
+      onDone: this.close,
     );
 
     input = _readStreamController.stream;
     output = _BluetoothStreamSink<Uint8List>(id);
   }
 
-  /// Returns connection to given address
+  /// Returns connection to given address.
   static Future<BluetoothConnection> toAddress(String address) async {
     // Sorry for pseudo-factory, but `factory` keyword disallows `Future`.
     return BluetoothConnection._consumeConnectionID(
@@ -54,6 +65,7 @@ class BluetoothConnection {
     );
   }
 
+  /// Should be called to make sure the connection is closed and resources are freed (sockets/channels).
   void dispose() {
     finish();
   }
@@ -61,16 +73,24 @@ class BluetoothConnection {
 
 
   /// Closes connection (rather immediately), in result should also disconnect.
-  Future<void> cancel() async {
-    await output.close();
-    await _readStreamController.close();
-    await _readStreamSubscription.cancel();
+  Future<void> close() {
+    return Future.wait([
+      output.close(),
+      _readStreamSubscription.cancel(),
+      (!_readStreamController.isClosed) 
+        ? _readStreamController.close()
+        : Future.value(/* Empty future */)
+    ], eagerError: true);
   }
+
+  /// Closes connection (rather immediately), in result should also disconnect.
+  @Deprecated('Use `close` instead')
+  Future<void> cancel() => this.close();
 
   /// Closes connection (rather gracefully), in result should also disconnect.
   Future<void> finish() async {
     await output.allSent;
-    await cancel();
+    close();
   }
 
 }
@@ -93,12 +113,12 @@ class _BluetoothStreamSink<Uint8List> extends StreamSink<Uint8List> {
   _BluetoothStreamSink(this._id) {
     // `_doneFuture` must be initialized here because `close` must return the same future.
     // If it would be in `done` get body, it would result in creating new futures every call.
-    _doneFuture = Future (() async {
+    _doneFuture = Future(() async {
       // @TODO ? is there any better way to do it? xD this below is weird af
-      while (this != null && this.isConnected) {
+      while (this.isConnected) {
         await Future.delayed(Duration(milliseconds: 111));
       }
-      if (this != null && this.exception != null) {
+      if (this.exception != null) {
         throw this.exception;
       }
     });
@@ -111,18 +131,24 @@ class _BluetoothStreamSink<Uint8List> extends StreamSink<Uint8List> {
   /// all added data are sent. 
   /// 
   /// You should use some encoding to send string, for example `ascii.encode('Hello!')` or `utf8.encode('Cześć!)`. 
+  /// 
+  /// Might throw `StateError("Not connected!")` if not connected.
   @override
   void add(Uint8List data) {
-    if (isConnected) {
-      _chainedFutures = _chainedFutures.then((_) async {
-        if (this != null && this.isConnected) {
-          await FlutterBluetoothSerial._methodChannel.invokeMethod('write', {'id': _id, 'bytes': data});
-        }
-      }).catchError((e) {
-        this.exception = e;
-        close();
-      });
+    if (!isConnected) {
+      throw StateError("Not connected!");
     }
+
+    _chainedFutures = _chainedFutures.then((_) async {
+      if (!isConnected) {
+        throw StateError("Not connected!");
+      }
+
+      await FlutterBluetoothSerial._methodChannel.invokeMethod('write', {'id': _id, 'bytes': data});
+    }).catchError((e) {
+      this.exception = e;
+      close();
+    });
   }
 
   /// Unsupported - this ouput sink cannot pass errors to platfom code.
@@ -159,7 +185,9 @@ class _BluetoothStreamSink<Uint8List> extends StreamSink<Uint8List> {
   /// Returns a future which is completed when the sink sent all added data, 
   /// instead of only if the sink got closed.
   /// 
-  /// Might fail with an error in case if some occured while sending the data.
+  /// Might fail with an error in case if some occured while sending the data. 
+  /// Typical error could be `StateError("Not connected!")` which could happen
+  /// if disconnected in middle of sending (queued) `add`ed data.
   /// 
   /// Otherwise, the returned future will complete when either:
   Future get allSent => Future(() async {
