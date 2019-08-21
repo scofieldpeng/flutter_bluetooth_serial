@@ -877,7 +877,9 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 
                 AsyncTask.execute(() -> {
                     try {
+                        Log.d(TAG,"connection.connect trigger, address:" + address);
                         connection.connect(address);
+                        Log.d(TAG,"connection success,address:" + address);
                         registrar.activity().runOnUiThread(new Runnable() {
                             @Override 
                             public void run() {
@@ -886,6 +888,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                         });
                     }
                     catch (Exception ex) {
+                        Log.d("flutter ble plugin:","connect error:" + ex.toString());
                         registrar.activity().runOnUiThread(new Runnable() {
                             @Override 
                             public void run() {

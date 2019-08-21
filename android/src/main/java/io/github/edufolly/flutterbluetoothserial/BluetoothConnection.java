@@ -10,12 +10,11 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.os.Build;
+import android.util.Log;
 
 /// Universal Bluetooth serial connection class (for Java)
-public abstract class BluetoothConnection
-{
-    protected static final UUID DEFAULT_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-
+public abstract class BluetoothConnection {
+    protected static final UUID DEFAULT_UUID = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
     protected BluetoothAdapter bluetoothAdapter;
 
     protected ConnectionThread connectionThread = null;
@@ -25,11 +24,9 @@ public abstract class BluetoothConnection
     }
 
 
-
     public BluetoothConnection(BluetoothAdapter bluetoothAdapter) {
         this.bluetoothAdapter = bluetoothAdapter;
     }
-
 
 
     // @TODO . `connect` could be done perfored on the other thread
@@ -42,29 +39,50 @@ public abstract class BluetoothConnection
             throw new IOException("already connected");
         }
 
+        // Cancel discovery, even though we didn't start it
+        bluetoothAdapter.cancelDiscovery();
+        Log.d("flutterPlugin", "before connect,cancel discovery first");
+
+        Log.d("flutterPlugin", "get remote device from address,address:" + address);
         BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
+        Log.d("flutterPlugin", "get remote device success,address:" + address + ",type:" + device.getType());
         if (device == null) {
             throw new IOException("device not found");
         }
-
-        BluetoothSocket socket = device.createInsecureRfcommSocketToServiceRecord(uuid);
+        Log.d("flutterPlugin", "device.createRfcommSocketToServiceRecord");
+        BluetoothSocket socket = device.createRfcommSocketToServiceRecord(uuid);
         if (socket == null) {
+            Log.d("flutterPlugin", "ble printer socket build failed,address:" + address);
             throw new IOException("socket connection not established");
         }
+        Log.d("flutterPlugin", "device get socket success,address:" + address);
 
-        // Cancel discovery, even though we didn't start it
-        bluetoothAdapter.cancelDiscovery();
-
-        socket.connect();
+        try {
+            Log.d("flutterPlugin", "ready to connect ble printer,address:" + address);
+            socket.connect();
+        } catch (IOException e) {
+            try {
+                Log.e("flutterBlePlugin", "trying fallback...,exception:" + e.toString());
+                socket = device.createInsecureRfcommSocketToServiceRecord(uuid);
+                Thread.sleep(500);
+                socket.connect();
+                Log.e("flutterBlePlugin", "Connected");
+            } catch (Exception e2) {
+                Log.e("flutterBlePlugin", "Couldn't establish Bluetooth connection!,exception:" + e2.toString());
+                throw new IOException(e2.toString());
+            }
+        }
+        Log.d("flutterPlugin", "ble printer connect success,address:" + address);
 
         connectionThread = new ConnectionThread(socket);
         connectionThread.start();
     }
+
     /// Connects to given device by hardware address (default UUID used)
     public void connect(String address) throws IOException {
         connect(address, DEFAULT_UUID);
     }
-    
+
     /// Disconnects current session (ignore if not connected)
     public void disconnect() {
         if (isConnected()) {
@@ -89,12 +107,12 @@ public abstract class BluetoothConnection
     protected abstract void onDisconnected(boolean byRemote);
 
     /// Thread to handle connection I/O
-    private class ConnectionThread extends Thread  {
+    private class ConnectionThread extends Thread {
         private final BluetoothSocket socket;
         private final InputStream input;
         private final OutputStream output;
         private boolean requestedClosing = false;
-        
+
         ConnectionThread(BluetoothSocket socket) {
             this.socket = socket;
             InputStream tmpIn = null;
@@ -131,16 +149,16 @@ public abstract class BluetoothConnection
             if (output != null) {
                 try {
                     output.close();
+                } catch (Exception e) {
                 }
-                catch (Exception e) {}
             }
 
             // Make sure input stream is closed
             if (input != null) {
                 try {
                     input.close();
+                } catch (Exception e) {
                 }
-                catch (Exception e) {}
             }
 
             // Callback on disconnected, with information which side is closing
@@ -169,8 +187,8 @@ public abstract class BluetoothConnection
             // Flush output buffers befoce closing
             try {
                 output.flush();
+            } catch (Exception e) {
             }
-            catch (Exception e) {}
 
             // Close the connection socket
             if (socket != null) {
@@ -179,8 +197,8 @@ public abstract class BluetoothConnection
                     Thread.sleep(111);
 
                     socket.close();
+                } catch (Exception e) {
                 }
-                catch (Exception e) {}
             }
         }
     }
