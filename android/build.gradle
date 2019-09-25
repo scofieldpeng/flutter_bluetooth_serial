@@ -2,8 +2,10 @@ group 'io.github.edufolly.flutterbluetoothserial'
 version '1.0-SNAPSHOT'
 buildscript {
     repositories {
-        google()
-        jcenter()
+        maven{ url 'https://maven.aliyun.com/repository/public'}
+        maven{ url 'https://maven.aliyun.com/repository/jcenter'}
+        maven{ url 'https://maven.aliyun.com/repository/google'}
+        maven{ url 'https://maven.aliyun.com/repository/gradle-plugin'}
     }
 
     dependencies {
@@ -12,8 +14,10 @@ buildscript {
 }
 rootProject.allprojects {
     repositories {
-        google()
-        jcenter()
+        maven{ url 'https://maven.aliyun.com/repository/public'}
+        maven{ url 'https://maven.aliyun.com/repository/jcenter'}
+        maven{ url 'https://maven.aliyun.com/repository/google'}
+        maven{ url 'https://maven.aliyun.com/repository/gradle-plugin'}
     }
 }
 apply plugin: 'com.android.library'
