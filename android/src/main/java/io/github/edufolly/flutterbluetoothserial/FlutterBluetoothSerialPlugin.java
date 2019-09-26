@@ -81,7 +81,6 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
     private int lastConnectionId = 0;
 
 
-
     /// Registers plugin in Flutter plugin system
     public static void registerWith(Registrar registrar) {
         final FlutterBluetoothSerialPlugin instance = new FlutterBluetoothSerialPlugin(registrar);
@@ -119,7 +118,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     if (stateSink == null) {
                         return;
                     }
-                    
+
                     final String action = intent.getAction();
                     switch (action) {
                         case BluetoothAdapter.ACTION_STATE_CHANGED:
@@ -130,13 +129,16 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                                 connection.disconnect();
                             }
                             connections.clear();
-
-                            handler.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    stateSink.success(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothDevice.ERROR));
-                                }
-                            });
+                            if (stateSink != null) {
+                                handler.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (stateSink != null) {
+                                            stateSink.success(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothDevice.ERROR));
+                                        }
+                                    }
+                                });
+                            }
                             break;
                     }
                 }
@@ -151,13 +153,13 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 
                     registrar.activeContext().registerReceiver(stateReceiver, new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED));
                 }
+
                 @Override
                 public void onCancel(Object o) {
                     stateSink = null;
                     try {
                         registrar.activeContext().unregisterReceiver(stateReceiver);
-                    }
-                    catch (IllegalArgumentException ex) {
+                    } catch (IllegalArgumentException ex) {
                         // Ignore `Receiver not registered` exception
                     }
                 }
@@ -175,7 +177,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             final int pairingVariant = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR);
                             Log.d(TAG, "Pairing request (variant " + pairingVariant + ") incoming from " + device.getAddress());
                             switch (pairingVariant) {
-                                case BluetoothDevice.PAIRING_VARIANT_PIN: 
+                                case BluetoothDevice.PAIRING_VARIANT_PIN:
                                     // Simplest method - 4 digit number
                                 {
                                     final BroadcastReceiver.PendingResult broadcastResult = this.goAsync();
@@ -195,15 +197,13 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                                                     Log.d(TAG, "Trying to set passkey for pairing to " + passkeyString);
                                                     device.setPin(passkey);
                                                     broadcastResult.abortBroadcast();
-                                                }
-                                                catch (Exception ex) {
+                                                } catch (Exception ex) {
                                                     Log.e(TAG, ex.getMessage());
                                                     ex.printStackTrace();
                                                     // @TODO , passing the error
                                                     //result.error("bond_error", "Setting passkey for pairing failed", exceptionToString(ex));
                                                 }
-                                            }
-                                            else {
+                                            } else {
                                                 Log.d(TAG, "Manual pin pairing in progress");
                                                 //Intent intent = new Intent(BluetoothAdapter.ACTION_PAIRING_REQUEST);
                                                 //intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
@@ -229,7 +229,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                                 // Note: `BluetoothDevice.PAIRING_VARIANT_PASSKEY` seems to be unsupported anyway... Probably is abandoned.
                                 // See https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/bluetooth/BluetoothDevice.java#1528
 
-                                case BluetoothDevice.PAIRING_VARIANT_PASSKEY_CONFIRMATION: 
+                                case BluetoothDevice.PAIRING_VARIANT_PASSKEY_CONFIRMATION:
                                     // Displayed passkey on the other device should be the same as received here.
                                 case 3: //case BluetoothDevice.PAIRING_VARIANT_CONSENT: // @TODO , Symbol not found?
                                     // The simplest, but much less secure method - just yes or no, without any auth.
@@ -255,15 +255,13 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                                                     // unavailable for thrid party apps on newer versions of Androids.
                                                     device.setPairingConfirmation(confirm);
                                                     broadcastResult.abortBroadcast();
-                                                }
-                                                catch (Exception ex) {
+                                                } catch (Exception ex) {
                                                     Log.e(TAG, ex.getMessage());
                                                     ex.printStackTrace();
                                                     // @TODO , passing the error
                                                     //result.error("bond_error", "Auto-confirming pass key failed", exceptionToString(ex));
                                                 }
-                                            }
-                                            else {
+                                            } else {
                                                 Log.d(TAG, "Manual passkey confirmation pairing in progress (key: " + pairingKey + ")");
                                                 ActivityCompat.startActivity(registrar.activity(), intent, null);
                                             }
@@ -283,7 +281,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                                     });
                                     break;
                                 }
-                                
+
                                 case 4: //case BluetoothDevice.PAIRING_VARIANT_DISPLAY_PASSKEY: // @TODO , Symbol not found?
                                     // This pairing method requires to enter the generated and displayed pairing key
                                     // on the remote device. It looks like basic asymmetric cryptography was used.
@@ -314,9 +312,9 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             }
                             break;
 
-                            default:
-                                // Ignore other actions
-                                break;
+                        default:
+                            // Ignore other actions
+                            break;
                     }
                 }
             };
@@ -328,12 +326,14 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                 @Override
                 public void onReceive(Context context, Intent intent) {
                     final String action = intent.getAction();
+                    if (action == null) {
+                        return;
+                    }
                     switch (action) {
                         case BluetoothDevice.ACTION_FOUND:
                             final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                             //final BluetoothClass deviceClass = intent.getParcelableExtra(BluetoothDevice.EXTRA_CLASS); // @TODO . !BluetoothClass!
                             //final String extraName = intent.getStringExtra(BluetoothDevice.EXTRA_NAME); // @TODO ? !EXTRA_NAME!
-                            final int deviceRSSI = intent.getIntExtra(BluetoothDevice.EXTRA_RSSI, Integer.MIN_VALUE);
 
                             Map<String, Object> discoveryResult = new HashMap<>();
                             discoveryResult.put("address", device.getAddress());
@@ -342,15 +342,21 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             //discoveryResult.put("class", deviceClass); // @TODO . it isn't my priority for now !BluetoothClass!
                             discoveryResult.put("isConnected", checkIsDeviceConnected(device));
                             discoveryResult.put("bondState", device.getBondState());
-                            discoveryResult.put("rssi", deviceRSSI);
+                            try {
+                                discoveryResult.put("rssi", intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE));
+                            } catch (Exception e) {
+                                Log.d(TAG, "get bluetooth rssi failed!error:" + e.toString());
+                            }
 
                             Log.d(TAG, "Discovered " + device.getAddress());
                             if (discoverySink != null) {
-                                final Map<String,Object> result = discoveryResult;
+                                final Map<String, Object> result = discoveryResult;
                                 handler.post(new Runnable() {
                                     @Override
                                     public void run() {
-                                        discoverySink.success(result);
+                                        if (discoverySink != null) {
+                                            discoverySink.success(result);
+                                        }
                                     }
                                 });
                             }
@@ -360,8 +366,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             Log.d(TAG, "Discovery finished");
                             try {
                                 context.unregisterReceiver(discoveryReceiver);
-                            }
-                            catch (IllegalArgumentException ex) {
+                            } catch (IllegalArgumentException ex) {
                                 // Ignore `Receiver not registered` exception
                             }
 
@@ -372,7 +377,6 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                                 discoverySink = null;
                             }
                             break;
-
                         default:
                             // Ignore.
                             break;
@@ -387,16 +391,16 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                 public void onListen(Object o, EventSink eventSink) {
                     discoverySink = eventSink;
                 }
+
                 @Override
                 public void onCancel(Object o) {
                     Log.d(TAG, "Canceling discovery (stream closed)");
                     try {
                         registrar.activeContext().unregisterReceiver(discoveryReceiver);
-                    }
-                    catch (IllegalArgumentException ex) {
+                    } catch (IllegalArgumentException ex) {
                         // Ignore `Receiver not registered` exception
                     }
-                    
+
                     bluetoothAdapter.cancelDiscovery();
 
                     if (discoverySink != null) {
@@ -421,14 +425,19 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     }
                 });
                 return;
-            }
-            else {
-                result.error("bluetooth_unavailable", "bluetooth is not available", null);
+            } else {
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        result.error("bluetooth_unavailable", "bluetooth is not available", null);
+                    }
+                });
                 return;
             }
         }
 
-        methodCallDispatching: switch (call.method) {
+        methodCallDispatching:
+        switch (call.method) {
             ////////////////////////////////////////
             /* Adapter settings and general */
             case "isAvailable":
@@ -465,8 +474,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     pendingResultForActivityResult = result;
                     Intent intent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
                     ActivityCompat.startActivityForResult(registrar.activity(), intent, REQUEST_ENABLE_BLUETOOTH, null);
-                }
-                else {
+                } else {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -485,8 +493,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             result.success(true);
                         }
                     });
-                }
-                else {
+                } else {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -535,8 +542,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             }
                             address = value;
                             break;
-                        }
-                        catch (Exception ex) {
+                        } catch (Exception ex) {
                             // Ignoring failure (since it isn't critical API for most applications)
                             Log.d(TAG, "Obtaining address using Settings Secure bank failed");
                             //result.error("hidden_address", "obtaining address using Settings Secure bank failed", exceptionToString(ex));
@@ -565,8 +571,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             address = value;
                             Log.d(TAG, "Probably succed: " + address + " ✨ :F");
                             break;
-                        }
-                        catch (Exception ex) {
+                        } catch (Exception ex) {
                             // Ignoring failure (since it isn't critical API for most applications)
                             Log.d(TAG, "Obtaining address using reflection against internal Android code failed");
                             //result.error("hidden_address", "obtaining address using reflection agains internal Android code failed", exceptionToString(ex));
@@ -594,18 +599,17 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                                     }
                                     addressBuilder.setLength(17);
                                     value = addressBuilder.toString();
-                                //     Log.v(TAG, "-> '" + name + "' : " + value);
-                                // }
-                                // else {
-                                //    Log.v(TAG, "-> '" + name + "' : <no hardware address>");
+                                    //     Log.v(TAG, "-> '" + name + "' : " + value);
+                                    // }
+                                    // else {
+                                    //    Log.v(TAG, "-> '" + name + "' : <no hardware address>");
                                 }
                             }
                             if (value == null) {
                                 throw new NullPointerException();
                             }
                             address = value;
-                        }
-                        catch (Exception ex) {
+                        } catch (Exception ex) {
                             // Ignoring failure (since it isn't critical API for most applications)
                             Log.w(TAG, "Looking for address by network interfaces failed");
                             //result.error("hidden_address", "looking for address by network interfaces failed", exceptionToString(ex));
@@ -647,8 +651,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                 final String name;
                 try {
                     name = call.argument("name");
-                }
-                catch (ClassCastException ex) {
+                } catch (ClassCastException ex) {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -686,8 +689,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     if (!BluetoothAdapter.checkBluetoothAddress(address)) {
                         throw new ClassCastException();
                     }
-                }
-                catch (ClassCastException ex) {
+                } catch (ClassCastException ex) {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -724,8 +726,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     if (!BluetoothAdapter.checkBluetoothAddress(address)) {
                         throw new ClassCastException();
                     }
-                }
-                catch (ClassCastException ex) {
+                } catch (ClassCastException ex) {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -753,7 +754,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             }
                         });
                         break methodCallDispatching;
-                    default: 
+                    default:
                         // Proceed.
                         break;
                 }
@@ -768,8 +769,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             result.success(value);
                         }
                     });
-                }
-                catch (Exception ex) {
+                } catch (Exception ex) {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -797,8 +797,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     if (!BluetoothAdapter.checkBluetoothAddress(address)) {
                         throw new ClassCastException();
                     }
-                }
-                catch (ClassCastException ex) {
+                } catch (ClassCastException ex) {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -836,13 +835,13 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             }
                         });
                         break methodCallDispatching;
-                    default: 
+                    default:
                         // Proceed.
                         break;
                 }
 
                 bondStateBroadcastReceiver = new BroadcastReceiver() {
-                    @Override 
+                    @Override
                     public void onReceive(Context context, Intent intent) {
                         switch (intent.getAction()) {
                             // @TODO . BluetoothDevice.ACTION_PAIRING_CANCEL
@@ -926,8 +925,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                 try {
                     registrar.activeContext().unregisterReceiver(pairingRequestReceiver);
                     Log.d(TAG, "Stopped listening for pairing requests to handle");
-                }
-                catch (IllegalArgumentException ex) {
+                } catch (IllegalArgumentException ex) {
                     // Ignore `Receiver not registered` exception
                 }
                 break;
@@ -956,7 +954,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             entry.put("bondState", BluetoothDevice.BOND_BONDED);
                             list.add(entry);
                         }
-                        final List<Map<String,Object>> res = list;
+                        final List<Map<String, Object>> res = list;
                         handler.post(new Runnable() {
                             @Override
                             public void run() {
@@ -996,7 +994,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                         intent.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
                         intent.addAction(BluetoothDevice.ACTION_FOUND);
                         registrar.activeContext().registerReceiver(discoveryReceiver, intent);
-                        
+
                         bluetoothAdapter.startDiscovery();
 
                         handler.post(new Runnable() {
@@ -1009,17 +1007,16 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                 });
                 break;
 
-            case "cancelDiscovery": 
+            case "cancelDiscovery":
                 Log.d(TAG, "Canceling discovery");
                 try {
                     registrar.activeContext().unregisterReceiver(discoveryReceiver);
-                }
-                catch (IllegalArgumentException ex) {
+                } catch (IllegalArgumentException ex) {
                     // Ignore `Receiver not registered` exception
                 }
 
                 bluetoothAdapter.cancelDiscovery();
-                
+
                 if (discoverySink != null) {
                     discoverySink.endOfStream();
                     discoverySink = null;
@@ -1048,10 +1045,9 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 
                 if (call.hasArgument("duration")) {
                     try {
-                        int duration = (int) call.argument("duration");
+                        int duration = call.argument("duration");
                         intent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, duration);
-                    }
-                    catch (ClassCastException ex) {
+                    } catch (ClassCastException ex) {
                         handler.post(new Runnable() {
                             @Override
                             public void run() {
@@ -1086,8 +1082,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     if (!BluetoothAdapter.checkBluetoothAddress(address)) {
                         throw new ClassCastException();
                     }
-                }
-                catch (ClassCastException ex) {
+                } catch (ClassCastException ex) {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -1105,36 +1100,23 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 
                 AsyncTask.execute(() -> {
                     try {
-                        Log.d(TAG,"connection.connect trigger, address:" + address);
+                        Log.d(TAG, "connection.connect trigger, address:" + address);
                         connection.connect(address);
-                        Log.d(TAG,"connection success,address:" + address);
-                        handler.post(new Runnable() {
+                        Log.d(TAG, "connection success,address:" + address);
+                        registrar.activity().runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
                                 result.success(id);
                             }
                         });
-//                        registrar.activity().runOnUiThread(new Runnable() {
-//                            @Override
-//                            public void run() {
-//                                result.success(id);
-//                            }
-//                        });
-                    }
-                    catch (Exception ex) {
-                        Log.d("flutter ble plugin:","connect error:" + ex.toString());
-                        handler.post(new Runnable() {
+                    } catch (Exception ex) {
+                        Log.d("flutter ble plugin:", "connect error:" + ex.toString());
+                        registrar.activity().runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
                                 result.error("connect_error", ex.getMessage(), exceptionToString(ex));
                             }
                         });
-//                        registrar.activity().runOnUiThread(new Runnable() {
-//                            @Override
-//                            public void run() {
-//                                result.error("connect_error", ex.getMessage(), exceptionToString(ex));
-//                            }
-//                        });
                         connections.remove(id);
                     }
                 });
@@ -1155,8 +1137,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                 int id;
                 try {
                     id = call.argument("id");
-                }
-                catch (ClassCastException ex) {
+                } catch (ClassCastException ex) {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -1176,7 +1157,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                     });
                     break;
                 }
-                
+
                 if (call.hasArgument("string")) {
                     String string = call.argument("string");
                     AsyncTask.execute(() -> {
@@ -1194,8 +1175,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 //                                    result.success(null);
 //                                }
 //                            });
-                        }
-                        catch (Exception ex) {
+                        } catch (Exception ex) {
                             handler.post(new Runnable() {
                                 @Override
                                 public void run() {
@@ -1210,8 +1190,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 //                            });
                         }
                     });
-                }
-                else if (call.hasArgument("bytes")) {
+                } else if (call.hasArgument("bytes")) {
                     byte[] bytes = call.argument("bytes");
                     AsyncTask.execute(() -> {
                         try {
@@ -1228,8 +1207,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 //                                    result.success(null);
 //                                }
 //                            });
-                        }
-                        catch (Exception ex) {
+                        } catch (Exception ex) {
                             handler.post(new Runnable() {
                                 @Override
                                 public void run() {
@@ -1244,8 +1222,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 //                            });
                         }
                     });
-                }
-                else {
+                } else {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -1268,26 +1245,24 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
     }
 
 
-
     private interface EnsurePermissionsCallback {
-        public void onResult(boolean granted);
+        void onResult(boolean granted);
     }
 
     EnsurePermissionsCallback pendingPermissionsEnsureCallbacks = null;
 
     private void ensurePermissions(EnsurePermissionsCallback callbacks) {
         if (
-            ContextCompat.checkSelfPermission(registrar.activity(),
-                Manifest.permission.ACCESS_COARSE_LOCATION) 
-                    != PackageManager.PERMISSION_GRANTED
+                ContextCompat.checkSelfPermission(registrar.activity(),
+                        Manifest.permission.ACCESS_COARSE_LOCATION)
+                        != PackageManager.PERMISSION_GRANTED
         ) {
             ActivityCompat.requestPermissions(registrar.activity(),
-                new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
+                    new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
                     REQUEST_COARSE_LOCATION_PERMISSIONS);
 
             pendingPermissionsEnsureCallbacks = callbacks;
-        }
-        else {
+        } else {
             callbacks.onResult(true);
         }
     }
@@ -1308,7 +1283,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
         switch (requestCode) {
             case REQUEST_ENABLE_BLUETOOTH:
                 // @TODO - used underlying value of `Activity.RESULT_CANCELED` since we tend to use `androidx` in which I were not able to find the constant.
-                pendingResultForActivityResult.success(resultCode == 0 ? false : true);
+                pendingResultForActivityResult.success(resultCode != 0);
                 return true;
 
             case REQUEST_DISCOVERABLE_BLUETOOTH:
@@ -1325,20 +1300,17 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
         // Unregister all ongoing receivers
         try {
             registrar.activeContext().unregisterReceiver(stateReceiver);
-        }
-        catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException ex) {
             // Ignore `Receiver not registered` exception
         }
         try {
             registrar.activeContext().unregisterReceiver(discoveryReceiver);
-        }
-        catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException ex) {
             // Ignore `Receiver not registered` exception
         }
         try {
             registrar.activeContext().unregisterReceiver(pairingRequestReceiver);
-        }
-        catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException ex) {
             // Ignore `Receiver not registered` exception
         }
         try {
@@ -1346,14 +1318,12 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                 registrar.activeContext().unregisterReceiver(bondStateBroadcastReceiver);
                 bondStateBroadcastReceiver = null;
             }
-        }
-        catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException ex) {
             // Ignore `Receiver not registered` exception
         }
 
         return false;
     }
-
 
 
     /// Helper function to get string out of exception
@@ -1371,18 +1341,16 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
             method = device.getClass().getMethod("isConnected");
             boolean value = (Boolean) method.invoke(device);
             return value;
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             return false;
         }
     }
 
 
-
     /// Helper wrapper class for `BluetoothConnection`
     private class BluetoothConnectionWrapper extends BluetoothConnection {
         private final int id;
-        
+
         protected EventSink readSink;
 
         protected EventChannel readChannel;
@@ -1393,6 +1361,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
             public void onListen(Object o, EventSink eventSink) {
                 readSink = eventSink;
             }
+
             @Override
             public void onCancel(Object o) {
                 // If canceled by local, disconnects - in other case, by remote, does nothing
@@ -1408,8 +1377,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
             }
         };
 
-        public BluetoothConnectionWrapper(int id, BluetoothAdapter adapter)
-        {
+        public BluetoothConnectionWrapper(int id, BluetoothAdapter adapter) {
             super(adapter);
             this.id = id;
 
@@ -1419,7 +1387,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
 
         @Override
         protected void onRead(byte[] buffer) {
-            if(readSink != null) {
+            if (readSink != null) {
                 handler.post(new Runnable() {
                     @Override
                     public void run() {
@@ -1448,8 +1416,7 @@ public class FlutterBluetoothSerialPlugin implements MethodCallHandler, RequestP
                             readSink.endOfStream();
                             readSink = null;
                         }
-                    }
-                    else {
+                    } else {
                         Log.d(TAG, "onDisconnected by local (id: " + id + ")");
                     }
                 }
